@@ -23,7 +23,7 @@ inputs:
 outputs:
   exit_code:
     description: 'Exit code of the last command executed' 
-    value: ${{ steps.execute_command.outputs.exit_code}}'
+    value: ${{ steps.execute_command.outputs.exit_code }}
   result:
     description: 'Output of the last command executed'
     value: ${{ steps.execute_command.outputs.result }}
@@ -33,30 +33,34 @@ runs:
   steps:
     - name: execute command
       id: execute_command
-      shell: bash
+      shell: pwsh
       working-directory: ${{ inputs.working_directory }}
       run: |
+        $max_attempts = [int]${{ inputs.max_attempts }}
+        $retry_interval = [int]${{ inputs.retry_interval }}
 
-        declare -i max_attempts=${{ inputs.max_attempts }}
-        set +e
-        for ((i=1; i<=max_attempts; i++)); do
-          echo -e "Attempts: $i"
-          result=$(${{ inputs.command }} 2>&1)
-          exit_code=$?
-          echo -e "Exit code: $exit_code"
-          echo -e "Result: $result"
+        for ($i=1; $i -le $max_attempts; $i++) {
+          Write-Host "Attempts: $i"
 
-          if ((exit_code == 0)) || ((i == max_attempts)); then
-            echo -e "result<<EOS" >> $GITHUB_OUTPUT
-            echo -e "$result" >> $GITHUB_OUTPUT
-            echo -e "EOS" >> $GITHUB_OUTPUT
-            echo -e "exit_code-$exit_code" >> $GITHUB_OUTPUT
+          # Run the PowerShell command
+          $result = Invoke-Expression -Command ${{ inputs.command }} 2>&1
+          $exit_code = $LASTEXITCODE
+          
+          Write-Host "Exit code: $exit_code"
+          Write-Host "Result: $result"
+
+          if ($exit_code -eq 0 -or $i -eq $max_attempts) {
+            # Output the result and exit code
+            Write-Output "##vso[task.setvariable variable=exit_code;isOutput=true]$exit_code"
+            Write-Output "##vso[task.setvariable variable=result;isOutput=true]$result"
+            Write-Host "result<<EOS"
+            Write-Host "$result"
+            Write-Host "EOS"
+            Write-Host "exit_code-$exit_code"
             exit $exit_code
-          else
-
-            retry_interval="${{ inputs.retry_interval }}"
-            echo -e "sleep: $retry_interval"
-            sleep $retry_interval
-          fi
-        done
-        set -e
+          }
+          else {
+            Write-Host "sleep: $retry_interval"
+            Start-Sleep -Seconds $retry_interval
+          }
+        }
