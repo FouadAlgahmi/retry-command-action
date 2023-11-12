@@ -1,0 +1,33 @@
+name: Retry command action
+
+on:
+  workflow_dispatch
+
+jobs:
+  test-retry:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/azure-powershell:10.4.1-centos-7
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Run the tests
+        id: runTestsStep
+        uses: ./
+        with:
+          max_attempts: 3
+          command: echo 'test of retry action'
+          retry_interval: 60
+          working_directory: ./
+      
+      - name: Check Unit Test Exit Status
+        if: ${{ steps.runTestsStep.outcome == 'failure'}}
+        uses: actions/github-script@v3
+        with:
+          script: |
+            core.setFailed('Unit testing failed')
